@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Viewer eBook - Lazy Loading</title>
+  <title>Viewer eBook Ramah HP & Laptop</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     body {
@@ -28,43 +28,45 @@
       height: auto;
     }
 
+    .page-placeholder {
+      margin-bottom: 20px;
+      border: 1px dashed #aaa;
+      background: #fff;
+      width: 90%;
+      max-width: 800px;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #666;
+      font-size: 14px;
+    }
+
     @media print {
       body {
         display: none !important;
       }
-    }
-
-    .loading {
-      text-align: center;
-      padding: 20px;
-      font-size: 14px;
-      color: #555;
     }
   </style>
 </head>
 
 <body oncontextmenu="return false">
   <div id="pdf-container"></div>
-  <div id="loading" class="loading">Memuat halaman...</div>
 
   <script>
-    const url = 'UU Nomor 8 Tahun 2019 Pelaksanaan Ibadah Haji dan Umroh.pdf'; // Pastikan file ada di folder yang sama
+    const url = 'UU Nomor 8 Tahun 2019 Pelaksanaan Ibadah Haji dan Umroh.pdf'; // ganti sesuai nama file PDF
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const container = document.getElementById('pdf-container');
-    const loading = document.getElementById('loading');
 
     let pdfDoc = null;
-    let currentPage = 1;
-    let isRendering = false;
 
-    // Fungsi render halaman
-    function renderPage(num) {
-      isRendering = true;
-      pdfDoc.getPage(num).then(page => {
-        const desiredWidth = Math.min(window.innerWidth * 0.9, 800); // max 800px
+    // Render 1 halaman
+    function renderPage(pageNum, placeholder) {
+      pdfDoc.getPage(pageNum).then(page => {
+        const desiredWidth = Math.min(window.innerWidth * 0.9, 800);
         const unscaledViewport = page.getViewport({ scale: 1 });
         const scale = desiredWidth / unscaledViewport.width;
         const viewport = page.getViewport({ scale: scale });
@@ -76,42 +78,42 @@
         canvas.style.width = viewport.width + "px";
         canvas.style.height = viewport.height + "px";
 
-        container.appendChild(canvas);
+        placeholder.replaceWith(canvas);
 
         page.render({
           canvasContext: context,
           viewport: viewport
-        }).promise.then(() => {
-          isRendering = false;
-          if (currentPage < pdfDoc.numPages) {
-            loading.style.display = 'block';
-          } else {
-            loading.style.display = 'none';
-          }
         });
       });
     }
 
-    // Load dokumen PDF
+    // Pakai IntersectionObserver -> render hanya saat halaman hampir kelihatan
+    function setupObserver(pageNum, placeholder) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          renderPage(pageNum, placeholder);
+          observer.disconnect();
+        }
+      }, { rootMargin: "200px" }); // render saat 200px sebelum kelihatan
+      observer.observe(placeholder);
+    }
+
     pdfjsLib.getDocument(url).promise.then(pdf => {
       pdfDoc = pdf;
-      renderPage(currentPage); // render halaman pertama
 
-      // Infinite scroll
-      window.addEventListener('scroll', () => {
-        if (!isRendering && currentPage < pdfDoc.numPages) {
-          if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
-            currentPage++;
-            renderPage(currentPage);
-          }
-        }
-      });
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'page-placeholder';
+        placeholder.textContent = `Halaman ${i} sedang dimuat...`;
+        container.appendChild(placeholder);
+        setupObserver(i, placeholder);
+      }
     }).catch(error => {
       console.error('Gagal memuat PDF:', error);
-      loading.textContent = 'Gagal memuat PDF 😢';
+      container.innerHTML = '<p style="color:red">Gagal memuat PDF 😢</p>';
     });
 
-    // Cegah shortcut save/print
+    // Cegah save/print
     document.addEventListener('keydown', function (e) {
       if ((e.ctrlKey && ['s', 'p', 'u'].includes(e.key.toLowerCase())) || e.key === 'F12') {
         e.preventDefault();
