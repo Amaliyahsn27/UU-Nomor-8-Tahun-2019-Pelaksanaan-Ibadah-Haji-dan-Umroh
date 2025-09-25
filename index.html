@@ -2,88 +2,123 @@
 <html lang="id">
 
 <head>
-    <meta charset="UTF-8">
-    <title>Viewer eBook - Semua Halaman</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <style>
-        body {
-            margin: 0;
-            background: #f0f0f0;
-            font-family: Arial, sans-serif;
-        }
+  <meta charset="UTF-8">
+  <title>Viewer eBook - Lazy Loading</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
 
-        #pdf-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 16px;
-        }
+    #pdf-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
 
-        canvas {
-            margin-bottom: 20px;
-            border: 1px solid #ccc;
-            background-color: white;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            max-width: 100%;
-            height: auto;
-        }
+    canvas {
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      background-color: white;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      max-width: 100%;
+      height: auto;
+    }
 
-        @media print {
-            body {
-                display: none !important;
-            }
-        }
-    </style>
+    @media print {
+      body {
+        display: none !important;
+      }
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+      font-size: 14px;
+      color: #555;
+    }
+  </style>
 </head>
 
 <body oncontextmenu="return false">
-    <div id="pdf-container"></div>
+  <div id="pdf-container"></div>
+  <div id="loading" class="loading">Memuat halaman...</div>
 
-    <script>
-        const url = 'UU Nomor 8 Tahun 2019 Pelaksanaan Ibadah Haji dan Umroh.pdf'; // Pastikan PDF ada di folder yang sama
+  <script>
+    const url = 'UU Nomor 8 Tahun 2019 Pelaksanaan Ibadah Haji dan Umroh.pdf'; // Pastikan file ada di folder yang sama
 
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        const container = document.getElementById('pdf-container');
+    const container = document.getElementById('pdf-container');
+    const loading = document.getElementById('loading');
 
-        pdfjsLib.getDocument(url).promise.then(pdf => {
-            const totalPages = pdf.numPages;
+    let pdfDoc = null;
+    let currentPage = 1;
+    let isRendering = false;
 
-            for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
-                pdf.getPage(pageNumber).then(page => {
-                    // Hitung scale berdasarkan lebar layar
-                    const desiredWidth = Math.min(window.innerWidth * 0.9, 800); // max 800px
-                    const unscaledViewport = page.getViewport({ scale: 1 });
-                    const scale = desiredWidth / unscaledViewport.width;
-                    const viewport = page.getViewport({ scale: scale * window.devicePixelRatio });
+    // Fungsi render halaman
+    function renderPage(num) {
+      isRendering = true;
+      pdfDoc.getPage(num).then(page => {
+        const desiredWidth = Math.min(window.innerWidth * 0.9, 800); // max 800px
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scale = desiredWidth / unscaledViewport.width;
+        const viewport = page.getViewport({ scale: scale });
 
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = viewport.width + "px";
+        canvas.style.height = viewport.height + "px";
 
-                    canvas.width = viewport.width;
-                    canvas.height = viewport.height;
-                    canvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
-                    canvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
+        container.appendChild(canvas);
 
-                    container.appendChild(canvas);
-
-                    page.render({
-                        canvasContext: context,
-                        viewport: viewport
-                    });
-                });
-            }
-        }).catch(error => {
-            console.error('Gagal memuat PDF:', error);
+        page.render({
+          canvasContext: context,
+          viewport: viewport
+        }).promise.then(() => {
+          isRendering = false;
+          if (currentPage < pdfDoc.numPages) {
+            loading.style.display = 'block';
+          } else {
+            loading.style.display = 'none';
+          }
         });
+      });
+    }
 
-        document.addEventListener('keydown', function (e) {
-            if ((e.ctrlKey && ['s', 'p', 'u'].includes(e.key.toLowerCase())) || e.key === 'F12') {
-                e.preventDefault();
-                alert('Aksi ini tidak diizinkan.');
-            }
-        });
-    </script>
+    // Load dokumen PDF
+    pdfjsLib.getDocument(url).promise.then(pdf => {
+      pdfDoc = pdf;
+      renderPage(currentPage); // render halaman pertama
+
+      // Infinite scroll
+      window.addEventListener('scroll', () => {
+        if (!isRendering && currentPage < pdfDoc.numPages) {
+          if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+            currentPage++;
+            renderPage(currentPage);
+          }
+        }
+      });
+    }).catch(error => {
+      console.error('Gagal memuat PDF:', error);
+      loading.textContent = 'Gagal memuat PDF 😢';
+    });
+
+    // Cegah shortcut save/print
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey && ['s', 'p', 'u'].includes(e.key.toLowerCase())) || e.key === 'F12') {
+        e.preventDefault();
+        alert('Aksi ini tidak diizinkan.');
+      }
+    });
+  </script>
 </body>
 
 </html>
